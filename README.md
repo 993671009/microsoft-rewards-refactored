@@ -120,3 +120,6 @@ A: 在脚本管理器中打开脚本设置，找到「通知接口配置」菜�
 ### Q: 支持哪些浏览器？
 
 A: 支持 Chrome、Edge、Firefox 等主流浏览器，需安装 ScriptCat 或 Tampermonkey 扩展。
+
+### 🔗 相关链接
+
