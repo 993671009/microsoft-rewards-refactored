@@ -3,7 +3,7 @@
 // @version      1.0.2
 // @description  每天在后台自动完成 Microsoft Rewards 任务获取积分奖励，✅签入(PC+App静默)、✅阅读、✅活动、✅搜索、✅Quiz、✅拼图、✅热搜API、✅二次扫描、✅积分通知、✅连签任务检测、✅每日活动自动上报
 // @author       kunkun
-// @icon         https://bing.com/th?id=OMR.icon-96.png&pid=Rewards
+// @icon         https://rewards.bing.com/rewardscdn/images/rewards/rewards-icon-96.png
 // @homepage     https://scriptcat.org/zh-CN/script-show-page/7869
 // @updateURL    https://scriptcat.org/scripts/code/7869/微软积分商城签到（重构版）.user.js
 // @downloadURL  https://scriptcat.org/scripts/code/7869/微软积分商城签到（重构版）.user.js
