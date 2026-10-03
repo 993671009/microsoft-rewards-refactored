@@ -58,19 +58,12 @@ Config:
         title: 锁定国区（非大陆IP自动停止）
         type: checkbox
         default: true
-    span:
-        title: 旧版搜索间隔（已停用）
-        type: number
-        default: 30
-        min: 30
-        unit: 秒
-        description: 当前每次搜索随机等待 5～30 秒，本项保留兼容旧配置，不影响实际间隔。
     api:
-        title: 搜索词来源（offline随机词，在线选项均轮换接口）
+        title: 搜索词来源
         type: select
-        default: offline
-        values: [offline, hot.nntool.cc, hot.baiwumm.com, hot.cnxiaobai.com]
-        description: 保留旧选项兼容配置；选择任一在线项都会在接口列表中轮换，不固定使用所选域名。
+        default: online
+        values: [offline, online]
+        description: offline 使用内置词库；online 自动轮换热搜接口。
     code:
         title: 授权码链接
         type: textarea
@@ -279,22 +272,22 @@ Notice:
       "美女高清手机壁纸",
       "美女人像摄影姿势"
     ],
-    // 在线模式轮换来源，所选域名不固定。
+    // 在线模式自动轮换热搜来源。
     apiConfig: {
-      mode: Storage.get("Config.api", "offline"),
+      mode: Storage.get("Config.api", "online"),
       sources: [
-        ["hot.baiwumm.com", {
+        {
           url: "https://hot.baiwumm.com/api/",
           hot: ["weibo", "douyin", "baidu", "toutiao", "thepaper", "qq", "netease", "zhihu"],
-        }],
-        ["hot.cnxiaobai.com", {
+        },
+        {
           url: "https://cnxiaobai.com/DailyHotApi/",
           hot: ["weibo", "douyin", "baidu", "toutiao", "thepaper", "qq-news", "netease-news", "zhihu"],
-        }],
-        ["hot.nntool.cc", {
+        },
+        {
           url: "https://hotapi.nntool.cc/",
           hot: ["weibo", "douyin", "baidu", "toutiao", "thepaper", "qq-news", "netease-news", "zhihu"],
-        }],
+        },
       ],
     },
     skipPatterns: [
@@ -1873,10 +1866,7 @@ Notice:
     async recover(quiet) {
       const now = Date.now(), previous = await Storage.get(this.storageKey, null);
       if (previous?.state === "running" && previous.expiresAt > now) return this.waitForOther(previous);
-      const nextAttemptAt = previous?.state === "failed"
-        ? Math.min(previous.nextAttemptAt, previous.expiresAt + this.cooldown)
-        : previous?.nextAttemptAt;
-      if (nextAttemptAt > now) {
+      if (previous?.nextAttemptAt > now) {
         this.warn("getuserinfo 自动恢复处于 10 分钟冷却期，本轮继续使用其他数据来源", quiet);
         return null;
       }
@@ -2811,14 +2801,9 @@ Notice:
       }
     },
 
-    // 在线词源失败时用随机词；offline 使用 searchPool。
+    // 在线词源获取失败时，回退到内置词库。
     async getHotSearchWord() {
-      const keywords = ["天气预报", "今日新闻", "体育赛事", "股票行情", "电影推荐", "科技资讯", "美食食谱", "旅游攻略", "历史上的今天", "健康常识"];
-      const baseWord = keywords[Utils.randomRange(0, keywords.length - 1)];
-      const randomSuffix = Math.random().toString(36).slice(2, 6);
-      let sentence = `${baseWord} ${randomSuffix}`;
-
-      if (RewardsAuto.apiConfig.mode !== "offline") {
+      if (RewardsAuto.apiConfig.mode === "online") {
         if (SearchState.wordIndex < 1 || SearchState.wordList.length < 1) {
           // 随机轮换来源，跳过上次接口并保存索引。
           const sources = RewardsAuto.apiConfig.sources;
@@ -2829,7 +2814,7 @@ Notice:
           const selected = candidates[Utils.randomRange(0, candidates.length - 1)];
           Storage.set("Config.apiIndex", selected.index);
 
-          const [, apiConfig] = selected.entry;
+          const apiConfig = selected.entry;
 
           try {
             const hotSource = apiConfig.hot[Utils.randomRange(0, apiConfig.hot.length - 1)];
@@ -2844,9 +2829,10 @@ Notice:
                 }
                 // 打乱词列表，随机截短标题。
                 SearchState.wordList.sort(() => Math.random() - 0.5);
-                sentence = SearchState.wordList[SearchState.wordIndex];
-                sentence = sentence.substring(0, Utils.randomRange(20, 32));
-                return sentence;
+                const sentence = SearchState.wordList[SearchState.wordIndex];
+                if (typeof sentence === "string" && sentence.trim()) {
+                  return sentence.substring(0, Utils.randomRange(20, 32));
+                }
               }
             }
           } catch (e) {
@@ -2858,21 +2844,18 @@ Notice:
           if (SearchState.wordIndex > SearchState.wordList.length - 1) {
             SearchState.wordIndex = 0;
           }
-          sentence = SearchState.wordList[SearchState.wordIndex];
-          sentence = sentence.substring(0, Utils.randomRange(20, 32));
-          return sentence;
+          const sentence = SearchState.wordList[SearchState.wordIndex];
+          if (typeof sentence === "string" && sentence.trim()) {
+            return sentence.substring(0, Utils.randomRange(20, 32));
+          }
         }
-        Notice.log("🟡", "热搜词接口异常，已使用随机搜索词");
+        Notice.log("🟡", "热搜词接口异常，已从内置词库随机选词");
       }
-      return sentence;
+      return RewardsAuto.searchPool[Utils.randomRange(0, RewardsAuto.searchPool.length - 1)];
     },
 
-    // 恢复当天搜索状态，并迁移旧计数规则。
+    // 恢复当天搜索状态。
     restoreSearchTracking() {
-      if (Storage.get("Config.searchTrackingSchema", 0) !== 1) {
-        Storage.set("Config.restrictedTimes", 0);
-        Storage.set("Config.searchTrackingSchema", 1);
-      }
       const today = Utils.getTodayNum();
       const sameDay = Number(Storage.get("Config.searchTrackingDate", 0)) === today;
       const progress = Number(Storage.get("Config.lastSearchProgress", -1));
@@ -3519,8 +3502,7 @@ Notice:
       const tasks = Storage.get("Config.tasks", {});
       target.signDate = tasks.sign || 0;
       target.readDate = tasks.read || 0;
-      // 仅复用 promosSchema=1 的完成日期，其余重新核验。
-      target.promosDate = tasks.promosSchema === 1 ? tasks.promos || 0 : 0;
+      target.promosDate = tasks.promos || 0;
       target.searchDate = tasks.search || 0;
       target.streakDays = tasks.streakDays || 0;
       target.signPoint = Storage.get("Config.signPoint", -1);
@@ -3537,7 +3519,7 @@ Notice:
         sign: target.signDate, read: target.readDate, promos: target.promosDate,
         search: target.searchDate, streakDays: target.streakDays
       };
-      const changes = { promosSchema: 1 };
+      const changes = {};
       for (const [key, value] of Object.entries(values)) {
         if (value !== target.savedTasks?.[key]) changes[key] = value;
       }
@@ -3762,7 +3744,7 @@ Notice:
         for (let batchIndex = 0; batchIndex < batchSize; batchIndex++) {
           RunGuard.assertActive();
           let query;
-          if (RewardsAuto.apiConfig.mode !== "offline") {
+          if (RewardsAuto.apiConfig.mode === "online") {
             query = await SearchService.getHotSearchWord();
           } else {
             query = RewardsAuto.searchPool[Utils.randomRange(0, RewardsAuto.searchPool.length - 1)];
